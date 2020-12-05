@@ -1,11 +1,30 @@
 # Changelog
 
+## 3.1.0
+
+### New
+  * `initialize` now supports the `options` parameter to supply platform specific options during initialization. 
+  * `SpeechToText.androidAlwaysStop` supported as an option. Forces the plugin to use the speech recognizer `stop` 
+  method even on SDK versions where that might fail. See https://github.com/csdcorp/speech_to_text/issues/150
+  * `SpeechToText.androidIntentLookup` looks up the intent name instead of using the default. This can work around 
+  some issues with security exceptions when trying to use the default. See 
+  https://github.com/csdcorp/speech_to_text/issues/153
+
+## 3.0.1
+
+### Fix
+  * Minor static code analysis improvements (addicted to pub points)
+
 ## 3.0.0
 
 ### New
-  * Now using a platform interface to prepare for web support
+  * Now using a platform interface to prepare for web support. Although this should not 
+  cause any functional changes it is a major refactoring. 
 
-### New
+### Fix
+  * Android `stop` now completes even if not initialized
+  * iOS onDevice initialization is more reliable
+  * No longer crashes on iOS version < 10
 
 ## 2.7.0
 
