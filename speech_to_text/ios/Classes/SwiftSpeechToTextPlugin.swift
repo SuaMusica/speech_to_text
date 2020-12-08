@@ -80,6 +80,7 @@ public class SwiftSpeechToTextPlugin: NSObject, FlutterPlugin {
     private var onDeviceStatus: Bool = false
     private var listening = false
     private let audioSession = AVAudioSession.sharedInstance()
+    private var shallDeactivateAudioSession: Bool = false
     private let audioEngine = AVAudioEngine()
     private let jsonEncoder = JSONEncoder()
     private let busForNodeTap = 0
@@ -130,7 +131,7 @@ public class SwiftSpeechToTextPlugin: NSObject, FlutterPlugin {
                 return
             }
             
-            listenForSpeech( result, localeStr: localeStr, partialResults: partialResults, onDevice: onDevice, listenMode: listenMode, sampleRate: sampleRate )
+            listenForSpeech( result, localeStr: localeStr, partialResults: partialResults, onDevice: onDevice, listenMode: listenMode, sampleRate: sampleRate)
         case SwiftSpeechToTextMethods.stop.rawValue:
             stopSpeech( result )
         case SwiftSpeechToTextMethods.cancel.rawValue:
@@ -297,7 +298,7 @@ public class SwiftSpeechToTextPlugin: NSObject, FlutterPlugin {
         listeningSound?.stop()
     }
     
-    private func stopCurrentListen( ) {
+    private func stopCurrentListen() {
         stopAllPlayers()
         self.currentRequest?.endAudio()
         invokeFlutter( SwiftSpeechToTextCallbackMethods.notifyStatus, arguments: SpeechToTextStatus.notListening.rawValue )
@@ -328,7 +329,9 @@ public class SwiftSpeechToTextPlugin: NSObject, FlutterPlugin {
             os_log("Error stopping listen: %{PUBLIC}@", log: pluginLog, type: .error, error.localizedDescription)
         }
         do {
-            try self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            if (self.shallDeactivateAudioSession) {
+                try self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            }
         }
         catch {
             os_log("Error deactivation: %{PUBLIC}@", log: pluginLog, type: .info, error.localizedDescription)
@@ -339,7 +342,7 @@ public class SwiftSpeechToTextPlugin: NSObject, FlutterPlugin {
         listening = false
     }
     
-    private func listenForSpeech( _ result: @escaping FlutterResult, localeStr: String?, partialResults: Bool, onDevice: Bool, listenMode: ListenMode, sampleRate: Int ) {
+    private func listenForSpeech( _ result: @escaping FlutterResult, localeStr: String?, partialResults: Bool, onDevice: Bool, listenMode: ListenMode, sampleRate: Int) {
         if ( nil != currentTask || listening ) {
             sendBoolResult( false, result );
             return
@@ -369,6 +372,7 @@ public class SwiftSpeechToTextPlugin: NSObject, FlutterPlugin {
                 try self.audioSession.setPreferredSampleRate(Double(sampleRate))
             }
             try self.audioSession.setMode(AVAudioSession.Mode.default)
+            
             try self.audioSession.setActive(true, options: .notifyOthersOnDeactivation)
             if let sound = listeningSound {
                 self.onPlayEnd = {()->Void in
