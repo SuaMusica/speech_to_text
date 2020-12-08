@@ -1,60 +1,7 @@
-import 'dart:async';
+import 'package:speech_to_text_platform_interface/speech_to_text_platform_interface.dart';
 
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-
-import 'method_channel_speech_to_text.dart';
-
-/// Holds a configuration option for a specific platform implementation.
-///
-/// These options should be used rarely as the plugin interface should
-/// try, as far as possible, to be identical on all platforms. These
-/// options allow specific behaviour only available on or required on
-/// a platform to be tailored.
-class SpeechConfigOption {
-  /// Defines the platform implementation the option is for, this is
-  /// meaningful only to the implementation.
-  final String platform;
-
-  /// The name of the option, meaningful only to the implementation.
-  final String name;
-
-  /// Value of the option, meaningful only to the implementation.
-  final dynamic value;
-
-  SpeechConfigOption(this.platform, this.name, this.value);
-}
-
-/// The interface that implementations of url_launcher must implement.
-///
-/// Platform implementations should extend this class rather than implement it as `speech_to_text`
-/// does not consider newly added methods to be breaking changes. Extending this class
-/// (using `extends`) ensures that the subclass will get the default implementation, while
-/// platform implementations that `implements` this interface will be broken by newly added
-/// [SpeechToTextPlatform] methods.
-abstract class SpeechToTextPlatform extends PlatformInterface {
-  /// Constructs a SpeechToTextPlatform.
-  SpeechToTextPlatform() : super(token: _token);
-
-  static final Object _token = Object();
-
-  static SpeechToTextPlatform _instance = MethodChannelSpeechToText();
-
-  /// The default instance of [SpeechToTextPlatform] to use.
-  ///
-  /// Defaults to [MethodChannelSpeechToText].
-  static SpeechToTextPlatform get instance => _instance;
-
-  /// Platform-specific plugins should set this with their own platform-specific
-  /// class that extends [SpeechToTextPlatform] when they register themselves.
-  static set instance(SpeechToTextPlatform instance) {
-    PlatformInterface.verifyToken(instance, _token);
-    _instance = instance;
-  }
-
-  void Function(String results) onTextRecognition;
-  void Function(String error) onError;
-  void Function(String status) onStatus;
-  void Function(double level) onSoundLevel;
+class SpeechToTextPlugin extends SpeechToTextPlatform {
+  @override
 
   /// Returns true if the user has already granted permission to access the
   /// microphone, does not prompt the user.
@@ -64,8 +11,8 @@ abstract class SpeechToTextPlatform extends PlatformInterface {
   /// call will prompt the user for permission if it is allowed to do so.
   /// Note that applications cannot ask for permission again if the user has
   /// denied them permission in the past.
-  Future<bool> hasPermission() {
-    throw UnimplementedError('hasPermission() has not been implemented.');
+  Future<bool> hasPermission() async {
+    return false;
   }
 
   /// Initialize speech recognition services, returns true if
@@ -76,15 +23,12 @@ abstract class SpeechToTextPlatform extends PlatformInterface {
   /// should be used. False usually means that the user has denied
   /// permission to use speech.
   ///
-  /// [options] can be used to control the behaviour of platform specific
-  /// implementations.
-  ///
   /// [debugLogging] controls whether there is detailed logging from the underlying
   /// plugins. It is off by default, usually only useful for troubleshooting issues
   /// with a paritcular OS version or device, fairly verbose
   Future<bool> initialize(
-      {debugLogging = false, List<SpeechConfigOption> options}) {
-    throw UnimplementedError('initialize() has not been implemented.');
+      {debugLogging = false, List<SpeechConfigOption> options}) async {
+    return false;
   }
 
   /// Stops the current listen for speech if active, does nothing if not.
@@ -97,9 +41,7 @@ abstract class SpeechToTextPlatform extends PlatformInterface {
   ///
   /// *Note:* Cannot be used until a successful [initialize] call. Should
   /// only be used after a successful [listen] call.
-  Future<void> stop() {
-    throw UnimplementedError('stop() has not been implemented.');
-  }
+  Future<void> stop() async {}
 
   /// Cancels the current listen for speech if active, does nothing if not.
   ///
@@ -111,9 +53,7 @@ abstract class SpeechToTextPlatform extends PlatformInterface {
   ///
   /// *Note* Cannot be used until a successful [initialize] call. Should only
   /// be used after a successful [listen] call.
-  Future<void> cancel() {
-    throw UnimplementedError('cancel() has not been implemented.');
-  }
+  Future<void> cancel() async {}
 
   /// Starts a listening session for speech and converts it to text.
   ///
@@ -143,13 +83,13 @@ abstract class SpeechToTextPlatform extends PlatformInterface {
       partialResults = true,
       onDevice = false,
       int listenMode,
-      sampleRate = 0}) {
-    throw UnimplementedError('listen() has not been implemented.');
+      sampleRate = 0}) async {
+    return false;
   }
 
   /// returns the list of speech locales available on the device.
   ///
-  Future<List<dynamic>> locales() {
-    throw UnimplementedError('locales() has not been implemented.');
+  Future<List<dynamic>> locales() async {
+    return [];
   }
 }

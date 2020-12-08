@@ -24,14 +24,18 @@ import io.flutter.plugin.common.PluginRegistry.Registrar
 import org.json.JSONObject
 import android.content.Context
 import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.pm.ResolveInfo
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognitionService
 import android.util.Log
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.BinaryMessenger
 import org.json.JSONArray
 import java.util.*
+import kotlin.collections.ArrayList
 
 
 enum class SpeechToTextErrors {
@@ -87,6 +91,8 @@ public class SpeechToTextPlugin :
     private var permissionToRecordAudio: Boolean = false
     private var listening = false
     private var debugLogging: Boolean = false
+    private var alwaysUseStop: Boolean = false
+    private var intentLookup: Boolean = false
     private var speechRecognizer: SpeechRecognizer? = null
     private var recognizerIntent: Intent? = null
     private var previousRecognizerLang: String? = null
@@ -163,6 +169,14 @@ public class SpeechToTextPlugin :
                     if (null != dlog) {
                         debugLogging = dlog
                     }
+                    var ausOpt = call.argument<Boolean>("alwaysUseStop")
+                    if (null != ausOpt) {
+                        alwaysUseStop = ausOpt == true
+                    }
+                    var iOpt = call.argument<Boolean>("intentLookup")
+                    if (null != iOpt) {
+                        intentLookup = iOpt == true
+                    }
                     initialize(result)
                 }
                 "listen" -> {
@@ -199,7 +213,8 @@ public class SpeechToTextPlugin :
     }
 
     private fun hasPermission(result: Result) {
-        if (sdkVersionTooLow(result)) {
+        if (sdkVersionTooLow()) {
+            result.success(false)
             return
         }
         debugLog("Start has_permission")
@@ -212,10 +227,11 @@ public class SpeechToTextPlugin :
     }
 
     private fun initialize(result: Result) {
-        if (sdkVersionTooLow(result)) {
+        if (sdkVersionTooLow()) {
+            result.success(false)
             return
         }
-        recognizerStops = Build.VERSION.SDK_INT != brokenStopSdk
+        recognizerStops = Build.VERSION.SDK_INT != brokenStopSdk || alwaysUseStop
         debugLog("Start initialize")
         if (null != activeResult) {
             result.error(SpeechToTextErrors.multipleRequests.name,
@@ -226,18 +242,14 @@ public class SpeechToTextPlugin :
         initializeIfPermitted(pluginContext)
     }
 
-    private fun sdkVersionTooLow(result: Result): Boolean {
+    private fun sdkVersionTooLow(): Boolean {
         if (Build.VERSION.SDK_INT < minSdkForSpeechSupport) {
-            result.success(false)
             return true;
         }
         return false;
     }
 
-    private fun isNotInitialized(result: Result): Boolean {
-        if (!initializedSuccessfully || null == pluginContext) {
-            result.success(false)
-        }
+    private fun isNotInitialized(): Boolean {
         return !initializedSuccessfully
     }
 
@@ -251,7 +263,8 @@ public class SpeechToTextPlugin :
 
     private fun startListening(result: Result, languageTag: String, partialResults: Boolean,
                                listenModeIndex: Int, onDevice: Boolean) {
-        if (sdkVersionTooLow(result) || isNotInitialized(result) || isListening()) {
+        if (sdkVersionTooLow() || isNotInitialized() || isListening()) {
+            result.success(false)
             return
         }
         createRecognizer()
@@ -275,7 +288,8 @@ public class SpeechToTextPlugin :
     }
 
     private fun stopListening(result: Result) {
-        if (sdkVersionTooLow(result) || isNotInitialized(result) || isNotListening()) {
+        if (sdkVersionTooLow() || isNotInitialized() || isNotListening()) {
+            result.success(false)
             return
         }
         debugLog("Stop listening")
@@ -293,7 +307,8 @@ public class SpeechToTextPlugin :
     }
 
     private fun cancelListening(result: Result) {
-        if (sdkVersionTooLow(result) || isNotInitialized(result) || isNotListening()) {
+        if (sdkVersionTooLow() || isNotInitialized() || isNotListening()) {
+            result.success(false)
             return
         }
         debugLog("Cancel listening")
@@ -311,7 +326,8 @@ public class SpeechToTextPlugin :
     }
 
     private fun locales(result: Result) {
-        if (sdkVersionTooLow(result) || isNotInitialized(result)) {
+        if (sdkVersionTooLow() || isNotInitialized()) {
+            result.success(false)
             return
         }
         var detailsIntent = RecognizerIntent.getVoiceDetailsIntent(pluginContext)
@@ -319,7 +335,7 @@ public class SpeechToTextPlugin :
             detailsIntent = Intent(RecognizerIntent.ACTION_GET_LANGUAGE_DETAILS)
         }
         pluginContext?.sendOrderedBroadcast(
-                detailsIntent, null, LanguageDetailsChecker(result),
+                detailsIntent, null, LanguageDetailsChecker(result, debugLogging),
                 null, Activity.RESULT_OK, null, null)
     }
 
@@ -421,14 +437,27 @@ public class SpeechToTextPlugin :
         activeResult = null
     }
 
+    private fun Context.findComponentName(): ComponentName? {
+        val list: List<ResolveInfo> = packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
+        return list.firstOrNull()?.serviceInfo?.let { ComponentName(it.packageName, it.name) }
+    }
+
     private fun createRecognizer() {
         if ( null != speechRecognizer ) {
             return
         }
         debugLog("Creating recognizer")
-        speechRecognizer = createSpeechRecognizer(pluginContext).apply {
-            debugLog("Setting listener")
-            setRecognitionListener(this@SpeechToTextPlugin)
+        if ( intentLookup ) {
+            speechRecognizer = createSpeechRecognizer(pluginContext,pluginContext?.findComponentName()).apply {
+                debugLog("Setting listener")
+                setRecognitionListener(this@SpeechToTextPlugin)
+            }
+        }
+        else {
+            speechRecognizer = createSpeechRecognizer(pluginContext).apply {
+                debugLog("Setting listener")
+                setRecognitionListener(this@SpeechToTextPlugin)
+            }
         }
         if (null == speechRecognizer) {
             Log.e(logTag, "Speech recognizer null")
@@ -571,21 +600,29 @@ public class SpeechToTextPlugin :
 }
 
 // See https://stackoverflow.com/questions/10538791/how-to-set-the-language-in-speech-recognition-on-android/10548680#10548680
-class LanguageDetailsChecker(flutterResult: Result) : BroadcastReceiver() {
+class LanguageDetailsChecker(flutterResult: Result, logging: Boolean ) : BroadcastReceiver() {
+    private val logTag = "SpeechToTextPlugin"
     private val result: Result = flutterResult
+    private val debugLogging: Boolean = logging
     private var supportedLanguages: List<String>? = null
 
     private var languagePreference: String? = null
 
     override fun onReceive(context: Context, intent: Intent) {
+        debugLog( "Received extra language broadcast" )
         val results = getResultExtras(true)
         if (results.containsKey(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE)) {
             languagePreference = results.getString(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE)
         }
         if (results.containsKey(RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES)) {
+            debugLog( "Extra supported languages" )
             supportedLanguages = results.getStringArrayList(
                     RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES)
             createResponse(supportedLanguages)
+        }
+        else {
+            debugLog(  "No extra supported languages" )
+            createResponse( ArrayList<String>())
         }
     }
 
@@ -609,6 +646,12 @@ class LanguageDetailsChecker(flutterResult: Result) : BroadcastReceiver() {
     private fun buildIdNameForLocale(locale: Locale): String {
         val name = locale.displayName.replace(':', ' ')
         return "${locale.language}_${locale.country}:$name"
+    }
+
+    private fun debugLog( msg: String ) {
+        if ( debugLogging ) {
+            Log.d( logTag, msg )
+        }
     }
 }
 

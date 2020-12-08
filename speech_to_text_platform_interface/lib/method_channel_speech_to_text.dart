@@ -29,13 +29,16 @@ class MethodChannelSpeechToText extends SpeechToTextPlatform {
   }
 
   @override
-  Future<bool> initialize({debugLogging = false}) {
+  Future<bool> initialize(
+      {debugLogging = false, List<SpeechConfigOption> options}) {
     _channel.setMethodCallHandler(_handleCallbacks);
+    var params = <String, Object>{
+      'debugLogging': debugLogging,
+    };
+    options?.forEach((option) => params[option.name] = option.value);
     return _channel.invokeMethod<bool>(
       'initialize',
-      <String, Object>{
-        'debugLogging': debugLogging,
-      },
+      params,
     );
   }
 

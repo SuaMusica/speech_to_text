@@ -1,4 +1,5 @@
 # speech_to_text
+
 [![pub package](https://img.shields.io/badge/pub-v3.0.0-blue)](https://pub.dartlang.org/packages/speech_to_text) [![build status](https://github.com/csdcorp/speech_to_text/workflows/build/badge.svg)](https://github.com/csdcorp/speech_to_text/actions?query=workflow%3Abuild) [![codecov](https://codecov.io/gh/csdcorp/speech_to_text/branch/main/graph/badge.svg?token=4LV3HESMS4)](undefined)
 
 A library that exposes device specific speech recognition capability.
@@ -153,6 +154,19 @@ using the `debugLogging: true` flag on the `initialize` method you'll see `'Spee
 in the Android log. There's a lengthy issue discussion here https://github.com/csdcorp/speech_to_text/issues/36 
 about this. The issue seems to be that the recognizer is not always automatically enabled on the device. Two 
 key things helped resolve the issue in this case at least. 
+
+### Not working on an Android emulator
+The above tip about getting it working on an Android device is also useful for emulators. Some users have reported seeing another error on Android simulators - sdk gphone x86 (Pixel 3a API 30). 
+AUDIO_RECORD perms were in Manifest, also manually set Mic perms in Android Settings. When running sample app, Initialize works, but Start failed the log looks as follows.
+```
+D/SpeechToTextPlugin(12555): put partial
+D/SpeechToTextPlugin(12555): put languageTag
+D/SpeechToTextPlugin(12555): Error 9 after start at 35 1000.0 / -100.0
+D/SpeechToTextPlugin(12555): Cancel listening
+```
+
+#### Resolved by
+Resolved it by Opening Google, clicking Mic icon and granting it perms, then everything on the App works...
 
 #### First 
 1. Go to Google Play
