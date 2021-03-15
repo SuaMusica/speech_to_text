@@ -1,7 +1,24 @@
-import 'package:speech_to_text_platform_interface/speech_to_text_platform_interface.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:html' as html;
+import 'dart:js';
 
+import 'package:flutter_web_plugins/flutter_web_plugins.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text_platform_interface/speech_to_text_platform_interface.dart';
+import 'web_speech.dart' as ws;
+
+/// Web implementation of the SpeechToText platform interface. This supports
+/// the speech to text functionality running in web browsers that have
+/// SpeechRecognition support.
 class SpeechToTextPlugin extends SpeechToTextPlatform {
-  @override
+  ws.SpeechRecognition _webSpeech;
+
+  /// Registers this class as the default instance of [UrlLauncherPlatform].
+  static void registerWith(Registrar registrar) {
+    SpeechToTextPlatform.instance = SpeechToTextPlugin();
+  }
 
   /// Returns true if the user has already granted permission to access the
   /// microphone, does not prompt the user.
@@ -11,8 +28,9 @@ class SpeechToTextPlugin extends SpeechToTextPlatform {
   /// call will prompt the user for permission if it is allowed to do so.
   /// Note that applications cannot ask for permission again if the user has
   /// denied them permission in the past.
+  @override
   Future<bool> hasPermission() async {
-    return false;
+    return true;
   }
 
   /// Initialize speech recognition services, returns true if
@@ -26,9 +44,28 @@ class SpeechToTextPlugin extends SpeechToTextPlatform {
   /// [debugLogging] controls whether there is detailed logging from the underlying
   /// plugins. It is off by default, usually only useful for troubleshooting issues
   /// with a paritcular OS version or device, fairly verbose
+  @override
   Future<bool> initialize(
       {debugLogging = false, List<SpeechConfigOption> options}) async {
-    return false;
+    try {
+      _webSpeech = ws.SpeechRecognition();
+      if (null != _webSpeech) {
+        _webSpeech.onerror = allowInterop(_onError);
+        _webSpeech.onstart = allowInterop(_onSpeechStart);
+        _webSpeech.onspeechstart = allowInterop(_onSpeechStart);
+        _webSpeech.onend = allowInterop(_onSpeechEnd);
+        _webSpeech.onspeechend = allowInterop(_onSpeechEnd);
+      }
+    } finally {
+      if (null == _webSpeech) {
+        if (null != onError) {
+          var error = SpeechRecognitionError('speech_not_supported', true);
+          onError(jsonEncode(error.toJson()));
+        }
+        return false;
+      }
+    }
+    return null != _webSpeech;
   }
 
   /// Stops the current listen for speech if active, does nothing if not.
@@ -41,7 +78,11 @@ class SpeechToTextPlugin extends SpeechToTextPlatform {
   ///
   /// *Note:* Cannot be used until a successful [initialize] call. Should
   /// only be used after a successful [listen] call.
-  Future<void> stop() async {}
+  @override
+  Future<void> stop() async {
+    if (null == _webSpeech) return;
+    _webSpeech.stop();
+  }
 
   /// Cancels the current listen for speech if active, does nothing if not.
   ///
@@ -53,7 +94,11 @@ class SpeechToTextPlugin extends SpeechToTextPlatform {
   ///
   /// *Note* Cannot be used until a successful [initialize] call. Should only
   /// be used after a successful [listen] call.
-  Future<void> cancel() async {}
+  @override
+  Future<void> cancel() async {
+    if (null == _webSpeech) return;
+    _webSpeech.abort();
+  }
 
   /// Starts a listening session for speech and converts it to text.
   ///
@@ -78,18 +123,68 @@ class SpeechToTextPlugin extends SpeechToTextPlatform {
   /// crash with `sampleRate != device's supported sampleRate`, try 44100 if seeing
   /// crashes
   ///
+  @override
   Future<bool> listen(
       {String localeId,
       partialResults = true,
       onDevice = false,
       int listenMode,
       sampleRate = 0}) async {
-    return false;
+    if (null == _webSpeech) return false;
+    _webSpeech.onresult = allowInterop(_onResult);
+    _webSpeech.interimResults = partialResults;
+    _webSpeech.continuous = partialResults;
+    _webSpeech.lang = localeId;
+    _webSpeech.start();
+    return true;
   }
 
   /// returns the list of speech locales available on the device.
   ///
+  @override
   Future<List<dynamic>> locales() async {
-    return [];
+    var availableLocales = [];
+    var lang = _webSpeech.lang;
+    if (null != lang && lang.isNotEmpty) {
+      lang = lang.replaceAll(':', '_');
+      availableLocales.add('$lang:$lang');
+    }
+    return availableLocales;
+  }
+
+  void _onError(html.SpeechRecognitionError event) {
+    if (null != onError) {
+      var error = SpeechRecognitionError(event.error, false);
+      onError(jsonEncode(error.toJson()));
+    }
+  }
+
+  void _onSpeechStart(html.Event event) {
+    if (null != onStatus) {
+      onStatus('listening');
+    }
+  }
+
+  void _onSpeechEnd(html.Event event) {
+    onStatus('not listening');
+  }
+
+  void _onResult(html.SpeechRecognitionEvent event) {
+    var isFinal = false;
+    var recogResults = <SpeechRecognitionWords>[];
+    var results = event.results;
+    if (null != results) {
+      for (var result in results) {
+        for (var altIndex = 0; altIndex < result.length; ++altIndex) {
+          var alt = result.item(altIndex);
+          recogResults
+              .add(SpeechRecognitionWords(alt.transcript, alt.confidence));
+        }
+      }
+    }
+    var result = SpeechRecognitionResult(recogResults, isFinal);
+    if (null != onTextRecognition) {
+      onTextRecognition(jsonEncode(result.toJson()));
+    }
   }
 }
